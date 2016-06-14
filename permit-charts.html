@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Const Charts</title>
+<style>
+
+.background {
+	fill: black;
+	/* fill: #D1E4EB; */
+}
+
+body {
+	font-size: 10px;
+	font-family: sans-serif;
+}
+
+</style>
+<body>
+<p>CLICK SOMETHING!</p>
+<p class="tooltip"></p>
+<div id=container></div>
+
+<script src="./js/d3.js"></script>
+<script>
+
+	//  ogr2ogr output.shp permit_extract.csv -dialect sqlite \
+	//  -sql "SELECT MakePoint(CAST(longitude as REAL), CAST(latitude as REAL), 4326) Geometry, * FROM permit_extract"
+
+	// https://data.austintexas.gov/resource/x9yh-78fz.json?$select=permit_number,permit_class,housing_units,latitude,longitude&$where=permittype='BP' AND work_class='New' AND permit_class_mapped='Residential'
+	// https://data.austintexas.gov/resource/x9yh-78fz.geojson?$select=permit_number,permit_class,housing_units,latitude,longitude&$where=permittype='BP' AND work_class='New' AND permit_class_mapped='Residential'
+
+
+	//   housing_units
+	//  latitude
+	//  longitude
+	var john; 
+
+	var totals;
+
+	var columns = 1;
+
+	var margin = {top: 5, right: 0, bottom: 5, left: 10},
+	    height = 200;
+
+	var width = 200;
+
+
+	var button_switch = 0;
+
+	var fillColor = "blue"
+
+	var years = [2005, 2006, 2007, 2008,
+		2009, 2010, 2011, 2012, 2013, 2014, 2015];
+
+
+
+	var y = d3.scale.linear().range([height-20, 0]);
+
+	var x = d3.scale.ordinal()
+            .rangeRoundBands([0, width], .2)
+            .domain(years); //  assumes data sorted by years (i think)
+
+	//static domain
+
+	var barWidth = width/20;
+
+	var colorRamp = ['#f768a1','#49006a'];
+
+	var color = d3.scale.linear().range(colorRamp);
+
+	var filters = ["sf", "mf", "duplex"];
+
+	kickAss(makeFakeData());
+
+	d3.selectAll(".bar").on("mouseover", function(d){
+		d3.select(".tooltip").html(function(){
+			return "YEAR " + d.key + "</br> Units " + d.values
+		});
+	});
+
+	function kickAss(data) {  // alterantively, generate data from d3.csv
+
+		y.domain([d3.max(fakeData, function(d){ return d3.max(d3.values(d)) }),0]); 
+
+		totals = d3.nest()
+	                .key(function (d) {
+	                    return d.zip;
+	                })
+	                .key(function (d) {
+	                    return d.year;
+	                }) 
+	                .rollup(function (v) {
+	                    var total = 0;
+	                    for (var i = 0; i < filters.length; i ++) {
+	                        total = total + (+v[0][filters[i]]);
+	                    }
+	                    return total;
+	                }) //rolling up the number of records for each violation type/status
+	                .entries(data);
+			
+		// totals.forEach(function(s) {s.maxUnits = d3.max(s.values, function(d) { return parseInt(d.units); });});
+	  	
+	  	drawCharts();
+
+	  	d3.select("body").on("click", function(){
+	  		
+	  		if (button_switch == 0) {
+	  			button_switch = 1;
+	  			filters = ["sf", "mf"];
+	  		} else if (button_switch == 1) {
+	  			button_switch = 2;
+	  			filters = ["mf"];
+	  		} else {
+	  			button_switch = 0;
+	  			filters = ["sf", "mf", "duplex"];
+	  		}
+
+	  		//  http://www.paulirish.com/2009/random-hex-color-code-snippets/
+	  		fillColor = '#'+Math.floor(Math.random()*16777215).toString(16);
+	  		
+	  		fillColor2 = '#'+Math.floor(Math.random()*16777215).toString(16);
+
+	  		d3.selectAll(".background").transition().duration(1000).ease("bounce").style("fill", function(){
+	  			return "black";
+	  			//return '#'+Math.floor(Math.random()*16777215).toString(16);
+	  		});
+
+	  		updateCharts(filters);
+
+	  	})
+
+	  	function drawCharts(){
+		    var svg = d3.select("#container")
+		    	.selectAll("svg")
+		    	.data(totals)
+				.enter()
+				.append("svg")
+				.attr("height", height + margin.bottom)
+				.attr("width", width + margin.left + margin.right)
+			
+			//background for testing
+			svg.append("rect")
+				.attr("class","background")
+				.attr("x",0)
+				.attr("y",0)
+				.attr("height", height)
+				.attr("width",width);
+			
+			var bars = svg.selectAll(".bar")
+				.data(function(d) { return d.values;})
+				.enter()
+				.append("rect")
+			    .attr("class", "bar")
+				.attr("x", function(d) { 
+					return x(d.key);
+				})
+				.attr("y", function(d) {
+					// console.log(d);
+					return height - y(d.values); 
+				})	
+				.attr("height", function(d) { return y(d.values); })
+				.attr("width", x.rangeBand())
+				.attr("fill", fillColor)
+		}
+
+		function updateCharts(filters){
+
+			totals = d3.nest()
+	                .key(function (d) {
+	                    return d.zip;
+	                })
+	                .key(function (d) {
+	                    return d.year;
+	                }) 
+	                .rollup(function (v) {
+	                    var total = 0;
+	                    for (var i = 0; i < filters.length; i ++) {
+	                        total = total + (+v[0][filters[i]]);
+	                    }
+	                    return total;
+	                }) //rolling up the number of records for each violation type/status
+	                .entries(data);
+
+	        d3.selectAll("svg")
+	        	.data(totals)
+	        	.selectAll(".bar")
+				.data(function(d) { return d.values;})
+				.transition()
+				.duration(400)
+				.delay(function(d, i) { return i / 37 * 3000; })
+				.ease("quad")
+				.attr("y", function(d){
+					return height - y(d.values); 
+				})
+				.attr("height", function(d) {
+					return y(d.values);
+				})
+				.attr("fill", fillColor);
+
+		}
+	    
+	} //  end kickAss()
+
+	function makeFakeData(){
+		
+		fakeData = [];
+		
+		var zips = 20;
+		
+		for (var i = 1; i < zips; i++){
+		
+			zip = i;
+		
+			for (var q in years) {
+				
+				var rando = Math.floor(Math.random() * 100);
+
+				var row = {"zip": i };
+		
+				row["sf"] = i * rando;
+		
+				row["mf"] = i * rando;
+		
+				row["duplex"] = i * rando;
+		
+				row["year"] = years[q];
+		
+				fakeData.push(row);
+			
+			}
+		
+		}
+
+		return fakeData;
+	}
+
+
+</script>  
+
+
+
+
+
+
